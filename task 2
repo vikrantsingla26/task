@@ -13,6 +13,9 @@ int main() {
     int guess;
     int attempts = 0;
 
+    cout << " I’m thinking of a number between 1 and 100." << endl;
+    cout << "Can you guess what it is?" << endl;
+
     // Loop until correct guess
     do {
         cout << "👉 Enter your guess: ";
