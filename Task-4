@@ -1,0 +1,110 @@
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <vector>
+#include <curl/curl.h>
+
+// A structure to hold product data
+struct Product {
+    std::string name;
+    std::string price;
+    std::string rating;
+};
+
+// Curl write callback to store fetched data in a std::string
+size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* userp) {
+    size_t totalSize = size * nmemb;
+    userp->append((char*)contents, totalSize);
+    return totalSize;
+}
+
+// Very basic HTML parser example function for demonstration
+// This function extracts product details from the raw HTML string 
+// based on known tags or classes (e.g., <div class="product-name">...</div>)
+// In real-world, use Gumbo or similar parser
+void parseProducts(const std::string& html, std::vector<Product>& products) {
+    size_t pos = 0;
+    while ((pos = html.find("<div class=\"product-name\">", pos)) != std::string::npos) {
+        Product p;
+
+        // Extract product name
+        size_t start = html.find(">", pos) + 1;
+        size_t end = html.find("</div>", start);
+        p.name = html.substr(start, end - start);
+
+        // Extract price (assumes price div follows immediately)
+        size_t pricePos = html.find("<div class=\"product-price\">", end);
+        if (pricePos != std::string::npos) {
+            start = html.find(">", pricePos) + 1;
+            end = html.find("</div>", start);
+            p.price = html.substr(start, end - start);
+        }
+
+        // Extract rating (assumes rating div follows)
+        size_t ratingPos = html.find("<div class=\"product-rating\">", end);
+        if (ratingPos != std::string::npos) {
+            start = html.find(">", ratingPos) + 1;
+            end = html.find("</div>", start);
+            p.rating = html.substr(start, end - start);
+        }
+
+        products.push_back(p);
+        pos = end;
+    }
+}
+
+// Write products to CSV file
+void writeCSV(const std::string& filename, const std::vector<Product>& products) {
+    std::ofstream file(filename);
+    if (!file) {
+        std::cerr << "Error opening file for writing\n";
+        return;
+    }
+    // CSV header
+    file << "Name,Price,Rating\n";
+    for (const auto& p : products) {
+        // Escape commas or quotes if needed for CSV compliance
+        file << "\"" << p.name << "\",\"" << p.price << "\",\"" << p.rating << "\"\n";
+    }
+    file.close();
+}
+
+int main() {
+    // URL of the e-commerce page (replace with actual URL)
+    const std::string url = "http://example.com/products";
+
+    CURL* curl;
+    CURLcode res;
+    std::string readBuffer;
+
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+    curl = curl_easy_init();
+
+    if (curl) {
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        // Follow HTTP redirects if any
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+        // Set up callback to capture response
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+
+        res = curl_easy_perform(curl);
+        if (res != CURLE_OK) {
+            std::cerr << "curl_easy_perform() failed: " << curl_easy_strerror(res) << "\n";
+            curl_easy_cleanup(curl);
+            return 1;
+        }
+        curl_easy_cleanup(curl);
+    }
+    curl_global_cleanup();
+
+    // Parse product information from HTML
+    std::vector<Product> products;
+    parseProducts(readBuffer, products);
+
+    // Write products to CSV file
+    writeCSV("products.csv", products);
+
+    std::cout << "Product data extracted and saved to products.csv\n";
+    return 0;
+}
